@@ -1,0 +1,16 @@
+python==3.9.23
+fastapi==0.119.1
+uvicorn==0.34.3
+scispacy==0.5.1
+spacy==3.4.4
+en_core_sci_sm==0.5.1
+networkx==3.1
+scikit-learn==1.6.1
+sentence-transformers==5.1.2 
+faiss-cpu==1.9.0
+python-dotenv==1.1.1
+pydantic==1.10.24
+pytest==8.4.2
+tqdm==4.67.1
+pandas==2.3.3
+rich==14.2.0

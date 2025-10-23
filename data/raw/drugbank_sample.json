@@ -1,0 +1,38 @@
+[
+  {
+    "drug_id": "DB00010",
+    "name": "Sermorelin",
+    "accession_numbers": "BTD00033 | BIOD00033",
+    "cas": "86168-78-7",
+    "unii": "89243S03TE",
+    "synonyms": "Sermorelin",
+    "standard_inchi_key": "",
+    "type": "Peptide",
+    "targets": "Growth hormone-releasing hormone receptor",
+    "description": "Sermorelin is a synthetic peptide analog of growth hormone-releasing hormone (GHRH) used to stimulate the release of growth hormone from the pituitary gland, primarily for diagnostic purposes or to treat growth hormone deficiency in children."
+  },
+  {
+    "drug_id": "DB00011",
+    "name": "Interferon alfa-n1",
+    "accession_numbers": "BTD00096 | BIOD00096 | DB00084",
+    "cas": "74899-72-2",
+    "unii": "41697D4Z5C",
+    "synonyms": "Interferon alfa-n1 | Interferon alpha-n1 (INS) | WELL-FERON | WELLFERON",
+    "standard_inchi_key": "",
+    "type": "Biologic",
+    "targets": "Interferon-alpha/beta receptor",
+    "description": "Interferon alfa-n1 is a purified, natural human interferon used to treat chronic hepatitis C and certain leukemias by enhancing immune responses and inhibiting viral replication."
+  },
+  {
+    "drug_id": "DB00012",
+    "name": "Darbepoetin alfa",
+    "accession_numbers": "BTD00032 | BIOD00032",
+    "cas": "209810-58-2",
+    "unii": "15UQ94PT4P",
+    "synonyms": "Darbepoetin | Darbepoetin alfa | Darbepoetin alfa,recombinant | Darbepoetina alfa",
+    "standard_inchi_key": "",
+    "type": "Biologic",
+    "targets": "Erythropoietin receptor",
+    "description": "Darbepoetin alfa is a recombinant erythropoiesis-stimulating protein used to treat anemia associated with chronic kidney disease or chemotherapy by promoting red blood cell production."
+  }
+]
