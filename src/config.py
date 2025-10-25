@@ -10,7 +10,7 @@ PROC_DIR = DATA_DIR / "processed"
 MODELS_DIR = BASE_DIR / "models"
 
 # embeddings model (sentence-transformers)
-EMBED_MODEL = os.getenv("EMBED_MODEL", "all-MiniLM-L6-v2")  # change to a biomedical model if desired
+EMBED_MODEL = os.getenv("EMBED_MODEL", "pritamdeka/SapBERT-from-PubMedBERT-fulltext")
 
 # scispaCy model name (installed via pip in requirements)
 SCISPACY_MODEL = os.getenv("SCISPACY_MODEL", "en_core_sci_sm")
