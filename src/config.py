@@ -23,5 +23,5 @@ EMBEDDINGS_PICKLE = MODELS_DIR / "embeddings.pkl"
 KG_PATH = MODELS_DIR / "kg_graph.gpickle"
 
 # LLM provider
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "dummy")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
