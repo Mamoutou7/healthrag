@@ -37,7 +37,15 @@ def smart_chunk_text(text: str,
 					 max_words: int = 300,
 					 overlap_ratio: float = 0.15
 					  ) -> List[str]:
-
+	"""
+	Optimal text chunking by sentences with smart overlap.
+	Args:
+		text (str): Input text to split.
+		max_words (int): Maximum number of words per chunk.
+		overlap_ratio (float): Fraction of overlap between chunks.
+	Returns:
+        List[str]: List of coherent text chunks.
+	"""
 	text = re.sub(r"\s", " ", text).strip()
 	sentences = re.split(r'(?<=[.!?])\s+', text)
 	chunks = []
