@@ -13,7 +13,7 @@ PROC_DIR = DATA_DIR / "processed"
 MODELS_DIR = BASE_DIR / "models"
 
 # embeddings model (sentence-transformers)
-EMBED_MODEL = os.getenv("EMBED_MODEL", "cambridgeltl/SapBERT-from-PubMedBERT-fulltext")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "cambridgeltl/SapBERT-UMLS-2020AB-all-lang-from-XLMR")
 
 # scispaCy model name (installed via pip in requirements)
 SCISPACY_MODEL = os.getenv("SCISPACY_MODEL", "en_core_sci_sm")
