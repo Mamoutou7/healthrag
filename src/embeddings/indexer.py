@@ -1,15 +1,18 @@
-# Created by Mamoutou Fofana
-# Date: 10/25/2025
-
+# -*- coding: utf-8 -*-
 """
 FAISS + Sentence-Transformer indexer – robust, dimension-safe, cached.
+
+Created by Mamoutou Fofana
+Date: 2025-10-25
+
 """
 
 from __future__ import annotations
 
+import warnings
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import faiss
 import numpy as np
@@ -24,8 +27,9 @@ from ..config import (
 )
 from ..utils.input_output import load_pickle, save_pickle
 
+warnings.filterwarnings('ignore')
 
-# Logger 
+# Logger configuration
 logger = logging.getLogger(__name__)
 
 # Ensure model cache directory exists
@@ -37,11 +41,10 @@ class FaissIndexer:
     def __init__(self, model_name: str = EMBED_MODEL):
         """Initialize SentenceTransformer and FAISS index."""
         self.model_name = model_name
-        self.model: SentenceTransformer | None = None
-        self.dim: int | None = None
-        self.index: faiss.IndexFlatL2 | None = None
+        self.model: Optional[SentenceTransformer] = None
+        self.dim: Optional[int] = None
+        self.index: Optional[faiss.IndexFlatL2] = None
         self.metadata:List[Dict[str, Any]] = []
-
 
     # Model handling (download once, cache forever)
     def _ensure_model(self) -> SentenceTransformer:
@@ -51,50 +54,50 @@ class FaissIndexer:
 
         # Try a local cache folder first
         local_path = MODELS_DIR / self.model_name.split("/")[-1]
-        if local_path.exists():
-            log.info(f"Loading SentenceTransformer from local cache: {local_path}")
-            self.model = SentenceTransformer(str(local_path), device="cpu")
+        try:
+            if local_path.exists():
+                logger.info(f"Loading from cache: {local_path}")
+                self.model = SentenceTransformer(str(local_path), device="cpu", use_auth_token=True)
 
-        else:
-            logger.info(f"Downloading SentenceTransformer model: {self.model_name}")
-            try:
+            else:
+                logger.info(f"Downloading: {self.model_name}")
                 download_dir = snapshot_download(
                     repo_id=self.model_name,
                     cache_dir=MODELS_DIR,
-                    tqdm_class=None,          # silence progress bar in prod
+                    tqdm_class=None,
                 )
-            except Exception as e:
-                raise RuntimeError(
-                    f"Could not download model '{self.model_name}'. "
-                    "Check your HF_TOKEN or switch to a public model. "
-                    f"({e})"
-                ) from e
-            self.model = SentenceTransformer(download_dir, device="cpu")
+                self.model = SentenceTransformer(download_dir, device="cpu")
+        except Exception as exc:
+            raise RuntimeError(
+                f"Model download failed: {exc}"
+            ) from exc
 
         self.dim = self.model.get_sentence_embedding_dimension()
         logger.info(f"Model loaded – dimension: {self.dim}")
-
         return self.model
 
 
-    # Index building
     def index_documents(self, documents: List[Dict]) -> None:
         """Encode texts and add them to the FAISS index."""
-        model = self._ensure_model()
+        _ = self._ensure_model()
         texts = [doc["text"] for doc in documents]
-        emb = self.model.encode(
+        embeddings = self.model.encode(
             texts,
             convert_to_numpy=True,
-            show_progress_bar=True,
-            normalize_embeddings=True
+            show_progress_bar=False,
+            normalize_embeddings=True,
+            batch_size=32,
+            device="cpu"
         ).astype(np.float32)
 
-        current_dim = emb.shape[1]
+        if embeddings.ndim != 2:
+            raise ValueError("Embeddings must be a 2D numpy array")
+
+        current_dim = embeddings.shape[1]
         if self.dim is not None and current_dim != self.dim:
             raise ValueError(
                 f"Dimension mismatch: expected {self.dim}, got {current_dim}. "
-                "All documents must be encoded with the same model."
-        )
+            )
 
         # Create index on first batch
         if self.index is None:
@@ -106,7 +109,7 @@ class FaissIndexer:
             if self.index.d != self.dim:
                 raise RuntimeError("FAISS index dimension corrupted.")
 
-        self.index.add(emb)
+        self.index.add(embeddings)
 
         self.metadata.extend(
             [
@@ -130,7 +133,7 @@ class FaissIndexer:
             raise ValueError("Nothing to save - index is empty.")
         faiss.write_index(self.index, str(index_path))
         save_pickle(self.metadata, metadata_path)
-        looger.info(f"Saved FAISS index to {index_path}")
+        logger.info(f"Saved FAISS index to {index_path}")
         logger.info(f"Saved metadata to {metadata_path}")
 
 
@@ -149,15 +152,12 @@ class FaissIndexer:
         self.metadata = load_pickle(metadata_path)
         index_dim = self.index.d 
 
-        # Charger le modèle pour vérifier la dimension
         model = self._ensure_model()
         model_dim = model.get_sentence_embedding_dimension()
 
         if model_dim != index_dim:
             raise RuntimeError(
-                f"Model dimension ({model_dim}) does not match FAISS index dimension ({index_dim}).\n"
-                "→ You likely indexed with a different model than the one currently loaded.\n"
-                "→ Fix: Re-index all documents with the current model, or use the correct model."
+                f"Model dimension ({model_dim}) does not match FAISS index dimension ({index_dim})."
             )
 
         self.dim = index_dim
@@ -176,17 +176,17 @@ class FaissIndexer:
         if self.index is None or self.dim is None:
             raise RuntimeError("FAISS index not initialized.")
 
-        model = self._ensure_model()
+        _ = self._ensure_model()
         query_vec = self.model.encode(
             [query_text], 
-            convert_to_numpy=True
+            convert_to_numpy=True,
+            device="cpu",
+            batch_size=1
             ).astype(np.float32)
 
-        # Vérification critique
-        if query_vec.shape[1] != self.dim:
+        if query_vec.ndim !=2 or query_vec.shape[1] != self.dim:
             raise ValueError(
                 f"Query embedding dim ({query_vec.shape[1]}) != index dim ({self.dim}). "
-                "Use the same model for indexing and querying."
             )
 
         distances, indices = self.index.search(query_vec, top_k)
@@ -198,3 +198,20 @@ class FaissIndexer:
                 entry["score"] = float(score)
                 results.append(entry)
         return results
+
+if __name__=='__main__':
+    documents = [
+        {"doc_id": 1, "chunk_id": 0, "text": "Le chat dort sur le canapé."},
+        {"doc_id": 1, "chunk_id": 1, "text": "Le chien joue dans le jardin."},
+        {"doc_id": 2, "chunk_id": 0, "text": "Python est un langage de programmation populaire."},
+        {"doc_id": 2, "chunk_id": 1, "text": "FAISS permet de rechercher efficacement dans des vecteurs."},
+    ]
+
+    indexer = FaissIndexer()
+    print("Indexation...")
+    indexer.index_documents(documents)
+    print("Indexation terminée (chunks):", len(indexer.metadata))
+
+    results = indexer.search("Comment rechercher rapidement dans des vecteurs ?", top_k=3)
+    for r in results:
+        print(f"{r['doc_id']} | {r['chunk_id']} | {r['score']:.2f} | {r['text']}")
