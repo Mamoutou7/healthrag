@@ -1,106 +1,174 @@
 # -*- coding: utf-8 -*-
 """
-Created by: Mamoutou Fofana
-Date: 2025-10-24
-Description:
-    Script to preprocess CSV data into chunked document JSONs.
+Preprocess CSV PubMed data into chunked document JSON.
+
+- Charge un CSV avec colonnes title / abstract / id
+- Construit un champ texte
+- Découpe le texte en chunks cohérents par phrase
+- Sauvegarde le résultat en JSON
 """
 
-from pathlib import Path
-import pandas as pd
-import re
+from __future__ import annotations
+
 import logging
-from typing import List, Dict
+import re
+from pathlib import Path
+from typing import Dict, List
+
+import pandas as pd
+
+from ..config import PROC_DIR, RAW_DIR
 from ..utils.input_output import save_json
-from ..config import RAW_DIR, PROC_DIR
+
+logger = logging.getLogger(__name__)
 
 
+def load_pubmed_csv(file_path: Path) -> pd.DataFrame:
+    """
+    Load a PubMed-like CSV and build a unified text field.
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+    Expected columns:
+        - title
+        - abstract
+        - id (optional)
 
-def load_pubmed_csv(file_path: Path):
-	"""
-	Load a CSV file and prepare text data
-	Args:
-		file_path: Path to the CSV file
-	Returns:
-		pd.DataFrame: DataFrame with 'text' column combining title
-	"""
-	df = pd.read_csv(file_path)
-	df = df.fillna("")
-	df["text"] = df["title"].astype(str) + "." + df["abstract"].astype(str)
-	return df 
+    Returns:
+        pd.DataFrame with a 'text' column.
+    """
+    df = pd.read_csv(file_path)
+    df = df.fillna("")
 
+    if "title" not in df.columns:
+        df["title"] = ""
+    if "abstract" not in df.columns:
+        df["abstract"] = ""
 
-def smart_chunk_text(text: str,
-					 max_words: int = 300,
-					 overlap_ratio: float = 0.15
-					  ) -> List[str]:
-	"""
-	Optimal text chunking by sentences with smart overlap.
-	Args:
-		text (str): Input text to split.
-		max_words (int): Maximum number of words per chunk.
-		overlap_ratio (float): Fraction of overlap between chunks.
-	Returns:
-        List[str]: List of coherent text chunks.
-	"""
-	text = re.sub(r"\s", " ", text).strip()
-	sentences = re.split(r'(?<=[.!?])\s+', text)
-	chunks = []
-	current_chunk = []
+    df["text"] = (
+        df["title"].astype(str).str.strip() + ". " + df["abstract"].astype(str).str.strip()
+    ).str.strip()
 
-	overlap_words = int(max_words * overlap_ratio)
-	word_count = 0
-
-	for sentence in sentences:
-		sentence_words = sentence.split()
-		sentence_len = len(sentence_words)
-
-		if word_count + sentence_len > max_words:
-			chunks.append(" ".join(current_chunk).strip())
-
-			if overlap_words > 0 and current_chunk:
-				overlap = " ".join(current_chunk[-overlap_words:])
-				current_chunk = overlap.split()
-				word_count = len(current_chunk)
-			else:
-				current_chunk = []
-				word_count = 0
-
-		current_chunk.extend(sentence_words)
-		word_count += sentence_len
-
-		if current_chunk:
-			chunks.append(" ".join(current_chunk).strip())
-
-		return chunks
+    return df
 
 
-def build_docs_from_pubmed(csv_path: Path,
-						   out_path: Path
-						   ) -> List[Dict[str, str]]:
+def smart_chunk_text(
+    text: str,
+    max_words: int = 300,
+    overlap_ratio: float = 0.15,
+) -> List[str]:
+    """
+    Split text into sentence-aware chunks with overlap.
 
-	df = load_pubmed_csv(csv_path)
-	docs = []
-	for _, row in df.iterrows():
-		chunks = smart_chunk_text(row["text"],
-					 max_words = 300,
-					 overlap_ratio = 0.15)
-		for i, c, in enumerate(chunks):
-			docs.append({
-				"doc_id": str(row.get("id", "")).strip() or f"pubmed_{_}", 
-				"chunk_id": f"{row.get('id', 'pubmed')}_{i}",
-				"text": c,
-				"title": str(row.get("title", ""))
-				})
+    Args:
+        text: Input text.
+        max_words: Max number of words per chunk.
+        overlap_ratio: Fraction of previous chunk words reused in next chunk.
 
-	save_json(docs, out_path)
-	print(f"Saved {len(docs)} chunks to {out_path}")
+    Returns:
+        List of chunk strings.
+    """
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
 
-	return docs
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return []
+
+    if max_words <= 0:
+        raise ValueError("max_words must be > 0")
+    if not 0 <= overlap_ratio < 1:
+        raise ValueError("overlap_ratio must be in [0, 1)")
+
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    chunks: List[str] = []
+    current_words: List[str] = []
+
+    overlap_words = int(max_words * overlap_ratio)
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        sentence_words = sentence.split()
+
+        # Si une phrase seule dépasse max_words, on la découpe brutalement
+        if len(sentence_words) > max_words:
+            if current_words:
+                chunks.append(" ".join(current_words).strip())
+                current_words = []
+
+            start = 0
+            while start < len(sentence_words):
+                end = start + max_words
+                chunk_words = sentence_words[start:end]
+                chunks.append(" ".join(chunk_words).strip())
+
+                if overlap_words > 0:
+                    start += max_words - overlap_words
+                else:
+                    start += max_words
+            continue
+
+        if current_words and len(current_words) + len(sentence_words) > max_words:
+            chunks.append(" ".join(current_words).strip())
+
+            if overlap_words > 0:
+                current_words = current_words[-overlap_words:]
+            else:
+                current_words = []
+
+        current_words.extend(sentence_words)
+
+    if current_words:
+        chunks.append(" ".join(current_words).strip())
+
+    return chunks
+
+
+def build_docs_from_pubmed(
+    csv_path: Path,
+    out_path: Path,
+    max_words: int = 300,
+    overlap_ratio: float = 0.15,
+) -> List[Dict[str, str]]:
+    """
+    Build chunked documents from a PubMed-like CSV.
+
+    Returns:
+        List of dicts with:
+            - doc_id
+            - chunk_id
+            - text
+            - title
+    """
+    df = load_pubmed_csv(csv_path)
+    docs: List[Dict[str, str]] = []
+
+    for row_idx, row in df.iterrows():
+        raw_doc_id = str(row.get("id", "")).strip()
+        doc_id = raw_doc_id or f"pubmed_{row_idx}"
+
+        chunks = smart_chunk_text(
+            row["text"],
+            max_words=max_words,
+            overlap_ratio=overlap_ratio,
+        )
+
+        for chunk_idx, chunk_text in enumerate(chunks):
+            docs.append(
+                {
+                    "doc_id": doc_id,
+                    "chunk_id": f"{doc_id}_{chunk_idx}",
+                    "text": chunk_text,
+                    "title": str(row.get("title", "")).strip(),
+                }
+            )
+
+    save_json(docs, out_path)
+    logger.info("Saved %s chunks to %s", len(docs), out_path)
+    return docs
 
 
 if __name__ == "__main__":
-	build_docs_from_pubmed(RAW_DIR / "sample_pubmed.csv", PROC_DIR / "docs.json")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+    build_docs_from_pubmed(RAW_DIR / "sample_pubmed.csv", PROC_DIR / "docs.json")
